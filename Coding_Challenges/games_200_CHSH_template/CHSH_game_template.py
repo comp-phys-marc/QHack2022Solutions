@@ -1,6 +1,8 @@
 #! /usr/bin/python3
 
 import sys
+import math
+import random
 import pennylane as qml
 from pennylane import numpy as np
 
@@ -17,9 +19,21 @@ def prepare_entangled(alpha, beta):
         - beta (float): real coefficient of |11>
     """
 
-    # QHACK #
+    # normalize
 
-    # QHACK #
+    normalization_constant = 1 / math.sqrt(abs(alpha) ** 2 + abs(beta) ** 2)
+    alpha = alpha * normalization_constant
+    beta = beta * normalization_constant
+
+    # rotate
+
+    theta = 2 * math.acos(alpha)
+
+    qml.RY(theta, wires=[0])
+
+    # entangle
+
+    qml.CNOT(wires=[0, 1])
 
 @qml.qnode(dev)
 def chsh_circuit(theta_A0, theta_A1, theta_B0, theta_B1, x, y, alpha, beta):
@@ -41,9 +55,20 @@ def chsh_circuit(theta_A0, theta_A1, theta_B0, theta_B1, x, y, alpha, beta):
 
     prepare_entangled(alpha, beta)
 
-    # QHACK #
+    assert x in [0, 1]
+    assert y in [0, 1]
 
-    # QHACK #
+    # Can't edit the final line. So, want to rotate back *onto* the computational basis state.
+
+    if x == 0:
+        qml.RY(- 2 * theta_A0, wires=[0])
+    else:
+        qml.RY(- 2 * theta_A1, wires=[0])
+
+    if y == 0:
+        qml.RY(- 2 * theta_B0, wires=[1])
+    else:
+        qml.RY(- 2 * theta_B1, wires=[1])
 
     return qml.probs(wires=[0, 1])
     
@@ -60,10 +85,28 @@ def winning_prob(params, alpha, beta):
         - (float): Probability of winning the game
     """
 
-    # QHACK #
+    # find a and b based on chsh_circuit and return prob(x * y == a + b mod 2)
 
-    # QHACK #
-    
+    prob_wins = 0
+
+    for (x, y) in [(0, 0), (0 ,1), (1, 0), (1, 1)]:
+        res = chsh_circuit(params[0], params[1], params[2], params[3], x, y, alpha, beta)
+
+        prob_a_0 = res[0] + res[1]
+        prob_b_0 = res[0] + res[2]
+        prob_a_1 = 1 - prob_a_0
+        prob_b_1 = 1 - prob_b_0
+
+        if x == 0 and y == 0:
+            prob_wins += prob_a_0 * prob_b_0
+        elif x == 0 and y == 1:
+            prob_wins += prob_a_0 * prob_b_1
+        elif x == 1 and y == 0:
+            prob_wins += prob_a_1 * prob_b_0
+        elif x == 1 and y == 1:
+            prob_wins += prob_a_1 * prob_b_1
+
+    return prob_wins / 4
 
 def optimize(alpha, beta):
     """Define a function that optimizes theta_A0, theta_A1, theta_B0, theta_B1 to maximize the probability of winning the game
@@ -79,25 +122,23 @@ def optimize(alpha, beta):
     def cost(params):
         """Define a cost function that only depends on params, given alpha and beta fixed"""
 
+        return 1 - winning_prob(params, alpha, beta)
+
     # QHACK #
 
     #Initialize parameters, choose an optimization method and number of steps
-    init_params = 
-    opt =
-    steps =
+    init_params = np.array([0.01, math.pi / 4, 0.01, math.pi / 4], requires_grad=True)
+    opt = qml.AdamOptimizer(stepsize=0.8)
+    steps = 10
 
-    # QHACK #
-    
     # set the initial parameter values
     params = init_params
 
     for i in range(steps):
-        # update the circuit parameters 
-        # QHACK #
+        # update the circuit parameters
 
-        params = 
-
-        # QHACK #
+        params = opt.step(cost, params)
+        params = np.clip(opt.step(cost, params), - 2 * np.pi, 2 * np.pi)
 
     return winning_prob(params, alpha, beta)
 
